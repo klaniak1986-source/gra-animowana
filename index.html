@@ -1,0 +1,29 @@
+<!doctype html>
+<html lang="pl">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Święto Smaku: Wielka Rewitalizacja</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <main class="game-shell">
+    <header class="game-header">
+      <h1>Święto Smaku: Wielka Rewitalizacja</h1>
+      <p>Prototyp sceny: Rynek</p>
+    </header>
+
+    <section class="scene-wrap" aria-label="Scena gry">
+      <canvas id="game" width="1280" height="720"></canvas>
+      <div id="tooltip" class="tooltip" hidden></div>
+    </section>
+
+    <section class="hud">
+      <div><strong>Cel:</strong> Rozwieś plakat Święta Smaku.</div>
+      <div id="message">Kliknij na rynku, aby przesunąć Jarka.</div>
+    </section>
+  </main>
+
+  <script src="src/game.js"></script>
+</body>
+</html>
