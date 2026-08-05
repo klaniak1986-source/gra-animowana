@@ -5,8 +5,52 @@ const ctx = canvas.getContext("2d");
 const message = document.getElementById("message");
 const tooltip = document.getElementById("tooltip");
 
+const ASSETS = {
+  background: "assets/locations/rynek/rynek-przed-rewitalizacja.png",
+  player: {
+    idle: [
+      "assets/characters/jarek/idle/idle-01.png",
+      "assets/characters/jarek/idle/idle-02.png",
+      "assets/characters/jarek/idle/idle-03.png",
+      "assets/characters/jarek/idle/idle-04.png",
+      "assets/characters/jarek/idle/idle-05.png",
+      "assets/characters/jarek/idle/idle-06.png",
+    ],
+    left: Array.from({ length: 6 }, (_, i) => `assets/characters/jarek/walk-left/walk-left-${String(i + 1).padStart(2, "0")}.png`),
+    right: Array.from({ length: 6 }, (_, i) => `assets/characters/jarek/walk-right/walk-right-${String(i + 1).padStart(2, "0")}.png`),
+    front: Array.from({ length: 6 }, (_, i) => `assets/characters/jarek/walk-front/walk-front-${String(i + 1).padStart(2, "0")}.png`),
+    back: Array.from({ length: 6 }, (_, i) => `assets/characters/jarek/walk-back/walk-back-${String(i + 1).padStart(2, "0")}.png`),
+    pickup: Array.from({ length: 6 }, (_, i) => `assets/characters/jarek/pickup/pickup-${String(i + 1).padStart(2, "0")}.png`),
+  },
+};
+
+const images = new Map();
+
+function loadImage(path) {
+  if (images.has(path)) return images.get(path);
+  const record = { image: new Image(), ready: false, failed: false };
+  record.image.onload = () => { record.ready = true; };
+  record.image.onerror = () => { record.failed = true; };
+  record.image.src = path;
+  images.set(path, record);
+  return record;
+}
+
+loadImage(ASSETS.background);
+Object.values(ASSETS.player).flat().forEach(loadImage);
+
 const state = {
-  player: { x: 640, y: 555, targetX: 640, targetY: 555, speed: 220 },
+  player: {
+    x: 640,
+    y: 555,
+    targetX: 640,
+    targetY: 555,
+    speed: 220,
+    direction: "idle",
+    frame: 0,
+    frameClock: 0,
+    action: null,
+  },
   inventory: new Set(["plakat"]),
   completed: new Set(),
   hovered: null,
@@ -39,11 +83,18 @@ function hotspotAt(x, y) {
   return hotspots.find((h) => x >= h.x && x <= h.x + h.w && y >= h.y && y <= h.y + h.h) || null;
 }
 
+function startAction(name) {
+  state.player.action = name;
+  state.player.frame = 0;
+  state.player.frameClock = 0;
+}
+
 function interact(id) {
   switch (id) {
     case "klej":
       if (!state.inventory.has("klej")) {
         state.inventory.add("klej");
+        startAction("pickup");
         message.textContent = "Jarek zdobył klej budowlany. Co może pójść nie tak?";
       } else {
         message.textContent = "Klej już jest w ekwipunku.";
@@ -99,58 +150,74 @@ canvas.addEventListener("click", (event) => {
     interact(hot.id);
     return;
   }
+  state.player.action = null;
   state.player.targetX = clamp(p.x, walkArea.left, walkArea.right);
   state.player.targetY = clamp(p.y, walkArea.top, walkArea.bottom);
 });
 
-function update(dt) {
+function updateAnimation(dt, moving) {
   const p = state.player;
-  const dx = p.targetX - p.x;
-  const dy = p.targetY - p.y;
-  const distance = Math.hypot(dx, dy);
-  if (distance > 2) {
-    const step = Math.min(distance, p.speed * dt);
-    p.x += (dx / distance) * step;
-    p.y += (dy / distance) * step;
+  p.frameClock += dt;
+  const frameTime = p.action ? 0.12 : moving ? 0.11 : 0.45;
+
+  if (p.frameClock < frameTime) return;
+  p.frameClock = 0;
+  p.frame += 1;
+
+  if (p.action) {
+    const frames = ASSETS.player[p.action] || [];
+    if (p.frame >= frames.length) {
+      p.action = null;
+      p.frame = 0;
+    }
   }
 }
 
-function drawBackground() {
+function update(dt) {
+  const p = state.player;
+  if (p.action) {
+    updateAnimation(dt, false);
+    return;
+  }
+
+  const dx = p.targetX - p.x;
+  const dy = p.targetY - p.y;
+  const distance = Math.hypot(dx, dy);
+  const moving = distance > 2;
+
+  if (moving) {
+    const step = Math.min(distance, p.speed * dt);
+    p.x += (dx / distance) * step;
+    p.y += (dy / distance) * step;
+
+    if (Math.abs(dx) > Math.abs(dy)) p.direction = dx < 0 ? "left" : "right";
+    else p.direction = dy < 0 ? "back" : "front";
+  } else {
+    p.direction = "idle";
+  }
+
+  updateAnimation(dt, moving);
+}
+
+function drawFallbackBackground() {
   const sky = ctx.createLinearGradient(0, 0, 0, canvas.height);
   sky.addColorStop(0, "#6e7880");
   sky.addColorStop(0.58, "#bda98d");
   sky.addColorStop(1, "#7b6652");
   ctx.fillStyle = sky;
   ctx.fillRect(0, 0, canvas.width, canvas.height);
-
   ctx.fillStyle = "#6a4b38";
   ctx.fillRect(0, 250, canvas.width, 225);
-  for (let i = 0; i < 9; i += 1) {
-    const x = i * 155 - 30;
-    ctx.fillStyle = i % 2 ? "#92725a" : "#735544";
-    ctx.fillRect(x, 205 + (i % 3) * 18, 170, 270);
-    ctx.fillStyle = "#2d2724";
-    for (let wy = 245; wy < 410; wy += 55) {
-      for (let wx = x + 20; wx < x + 145; wx += 48) ctx.fillRect(wx, wy, 25, 34);
-    }
-  }
-
   ctx.fillStyle = "#8a7867";
-  ctx.beginPath();
-  ctx.moveTo(0, 470);
-  ctx.lineTo(canvas.width, 420);
-  ctx.lineTo(canvas.width, canvas.height);
-  ctx.lineTo(0, canvas.height);
-  ctx.closePath();
-  ctx.fill();
+  ctx.fillRect(0, 460, canvas.width, 260);
+}
 
-  ctx.strokeStyle = "rgba(60,48,42,.35)";
-  ctx.lineWidth = 2;
-  for (let y = 470; y < 720; y += 35) {
-    ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(canvas.width, y - 30); ctx.stroke();
-  }
-  for (let x = 0; x < canvas.width; x += 75) {
-    ctx.beginPath(); ctx.moveTo(x, 460); ctx.lineTo(x + 60, 720); ctx.stroke();
+function drawBackground() {
+  const record = images.get(ASSETS.background);
+  if (record?.ready) {
+    ctx.drawImage(record.image, 0, 0, canvas.width, canvas.height);
+  } else {
+    drawFallbackBackground();
   }
 }
 
@@ -167,31 +234,28 @@ function drawProps() {
     ctx.fillText("ŚWIĘTO", 846, 390);
     ctx.fillText("SMAKU", 850, 410);
   }
+}
 
-  ctx.fillStyle = "#9a8f63";
-  ctx.fillRect(1040, 540, 65, 42);
-  ctx.fillStyle = "#39362e";
-  ctx.fillRect(1052, 528, 40, 15);
+function currentPlayerFrame() {
+  const p = state.player;
+  const animation = p.action || p.direction;
+  const frames = ASSETS.player[animation] || ASSETS.player.idle;
+  return frames[p.frame % frames.length];
+}
 
-  ctx.fillStyle = "#4d3321";
-  ctx.fillRect(145, 485, 205, 20);
-  ctx.fillRect(165, 445, 165, 18);
-  ctx.fillRect(168, 505, 14, 55);
-  ctx.fillRect(312, 505, 14, 55);
-
-  ctx.fillStyle = "#62584f";
+function drawFallbackPlayer(scale) {
+  ctx.save();
+  ctx.scale(scale, scale);
+  ctx.fillStyle = "#2e4f75";
+  ctx.fillRect(-22, -78, 17, 75);
+  ctx.fillRect(5, -78, 17, 75);
+  ctx.fillStyle = "#d96d1f";
+  ctx.fillRect(-32, -145, 64, 72);
+  ctx.fillStyle = "#d7a57e";
   ctx.beginPath();
-  ctx.ellipse(590, 505, 120, 42, 0, 0, Math.PI * 2);
+  ctx.arc(0, -170, 30, 0, Math.PI * 2);
   ctx.fill();
-  ctx.fillStyle = "#3c4547";
-  ctx.beginPath();
-  ctx.ellipse(590, 495, 87, 23, 0, 0, Math.PI * 2);
-  ctx.fill();
-
-  ctx.fillStyle = "#343638";
-  for (const [x, y] of [[735,535],[770,550],[810,528]]) {
-    ctx.beginPath(); ctx.ellipse(x, y, 12, 7, 0, 0, Math.PI * 2); ctx.fill();
-  }
+  ctx.restore();
 }
 
 function drawPlayer() {
@@ -199,29 +263,22 @@ function drawPlayer() {
   const scale = 0.72 + ((p.y - walkArea.top) / (walkArea.bottom - walkArea.top)) * 0.32;
   ctx.save();
   ctx.translate(p.x, p.y);
-  ctx.scale(scale, scale);
 
   ctx.fillStyle = "rgba(0,0,0,.25)";
-  ctx.beginPath(); ctx.ellipse(0, 7, 35, 10, 0, 0, Math.PI * 2); ctx.fill();
+  ctx.beginPath();
+  ctx.ellipse(0, 7, 35 * scale, 10 * scale, 0, 0, Math.PI * 2);
+  ctx.fill();
 
-  ctx.fillStyle = "#2e4f75";
-  ctx.fillRect(-22, -78, 17, 75);
-  ctx.fillRect(5, -78, 17, 75);
-  ctx.fillStyle = "#47301f";
-  ctx.fillRect(-27, -8, 25, 12);
-  ctx.fillRect(2, -8, 25, 12);
-
-  ctx.fillStyle = "#d96d1f";
-  ctx.fillRect(-32, -145, 64, 72);
-  ctx.fillStyle = "#d7a57e";
-  ctx.fillRect(-42, -140, 11, 58);
-  ctx.fillRect(31, -140, 11, 58);
-
-  ctx.fillStyle = "#d7a57e";
-  ctx.beginPath(); ctx.arc(0, -170, 30, 0, Math.PI * 2); ctx.fill();
-  ctx.fillStyle = "#59483e";
-  ctx.beginPath(); ctx.arc(0, -178, 31, Math.PI, Math.PI * 2); ctx.fill();
-  ctx.fillRect(-23, -158, 46, 9);
+  const framePath = currentPlayerFrame();
+  const record = images.get(framePath);
+  if (record?.ready) {
+    const targetHeight = 205 * scale;
+    const ratio = record.image.width / record.image.height;
+    const targetWidth = targetHeight * ratio;
+    ctx.drawImage(record.image, -targetWidth / 2, -targetHeight, targetWidth, targetHeight);
+  } else {
+    drawFallbackPlayer(scale);
+  }
   ctx.restore();
 }
 
